@@ -26,12 +26,12 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
@@ -39,15 +39,15 @@ jobs:
         run: npm ci
         working-directory: backend
 
-      - name: Lint check
-        run: npm run lint
-        working-directory: backend
-
       - name: Generate Prisma Client
         run: npx prisma generate
         working-directory: backend
         env:
           DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/rent_flatmate_finder_test
+
+      - name: Lint check
+        run: npm run lint
+        working-directory: backend
 
       - name: Push DB Schema
         run: npx prisma db push --skip-generate
@@ -68,12 +68,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
