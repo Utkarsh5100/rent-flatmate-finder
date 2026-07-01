@@ -1,0 +1,303 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// Prisma Schema — Rent & Flatmate Finder
+//
+// Phase 1: Full data model with all entities, relations, indexes, and
+// cascade/restrict rules documented inline.
+// ──────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  TENANT
+  OWNER
+  ADMIN
+}
+
+enum ListingStatus {
+  ACTIVE
+  FILLED
+}
+
+enum RoomType {
+  SINGLE
+  DOUBLE
+  SHARED
+  STUDIO
+  APARTMENT
+}
+
+enum FurnishingStatus {
+  FURNISHED
+  SEMI_FURNISHED
+  UNFURNISHED
+}
+
+enum InterestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum ComputedVia {
+  LLM
+  FALLBACK
+}
+
+enum NotificationType {
+  INTEREST_RECEIVED
+  INTEREST_ACCEPTED
+  INTEREST_DECLINED
+  NEW_MESSAGE
+  LISTING_FILLED
+  COMPATIBILITY_COMPUTED
+  SYSTEM
+}
+
+// ─── User ────────────────────────────────────────────────────────────────────
+// Central auth entity. Every person on the platform has exactly one User row.
+// Role determines whether they see owner or tenant flows.
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  hashedPassword String    @map("hashed_password")
+  firstName      String    @map("first_name")
+  lastName       String    @map("last_name")
+  phone          String?
+  avatarUrl      String?   @map("avatar_url")
+  role           UserRole  @default(TENANT)
+  isActive       Boolean   @default(true) @map("is_active")
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // ── Relations ──
+  tenantProfile       TenantProfile?
+  listings            Listing[]           // only populated for OWNER role
+  compatibilityScores CompatibilityScore[] // only populated for TENANT role
+  interestRequests    InterestRequest[]   // tenant's interest requests
+  sentMessages        ChatMessage[]       @relation("SentMessages")
+  notifications       Notification[]
+
+  @@index([role])
+  @@index([isActive])
+  @@index([email])
+  @@map("users")
+}
+
+// ─── TenantProfile ───────────────────────────────────────────────────────────
+// Extended profile for tenants — captures housing preferences for the
+// compatibility engine. One-to-one with User (only TENANT role users).
+
+model TenantProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique @map("user_id")
+  preferredLocation String   @map("preferred_location")
+  budgetMin         Int      @map("budget_min")
+  budgetMax         Int      @map("budget_max")
+  moveInDate        DateTime @map("move_in_date")
+  occupation        String?
+  lifestyle         String?  // e.g. "early-riser, non-smoker, vegetarian"
+  bio               String?  // free-text self-description
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // ── Relations ──
+  // CASCADE: if the user is deleted, their tenant profile goes with them.
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([preferredLocation])
+  @@index([budgetMin, budgetMax])
+  @@map("tenant_profiles")
+}
+
+// ─── Listing ─────────────────────────────────────────────────────────────────
+// A room/apartment listed by an owner. Central entity for search and matching.
+
+model Listing {
+  id               String           @id @default(cuid())
+  ownerId          String           @map("owner_id")
+  title            String
+  description      String
+  location         String
+  address          String?
+  rent             Int              // monthly rent in currency units
+  deposit          Int?             // security deposit
+  availableFrom    DateTime         @map("available_from")
+  roomType         RoomType         @map("room_type")
+  furnishingStatus FurnishingStatus @map("furnishing_status")
+  amenities        String[]         // e.g. ["wifi", "parking", "laundry", "gym"]
+  rules            String[]         // e.g. ["no-smoking", "no-pets"]
+  maxOccupants     Int              @default(1) @map("max_occupants")
+  status           ListingStatus    @default(ACTIVE)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  // ── Relations ──
+  // RESTRICT: cannot delete an owner who still has listings.
+  owner               User                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  photos              ListingPhoto[]
+  compatibilityScores CompatibilityScore[]
+  interestRequests    InterestRequest[]
+
+  @@index([location])
+  @@index([rent])
+  @@index([status])
+  @@index([roomType])
+  @@index([ownerId])
+  @@index([availableFrom])
+  @@map("listings")
+}
+
+// ─── ListingPhoto ────────────────────────────────────────────────────────────
+// Separate table for listing images. Allows ordered galleries and easy
+// add/remove without updating the listing row.
+
+model ListingPhoto {
+  id        String   @id @default(cuid())
+  listingId String   @map("listing_id")
+  url       String
+  altText   String?  @map("alt_text")
+  order     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // ── Relations ──
+  // CASCADE: photos are deleted when the listing is deleted.
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@map("listing_photos")
+}
+
+// ─── CompatibilityScore ──────────────────────────────────────────────────────
+// Cached AI compatibility score between a tenant and a listing.
+// Unique per (tenant, listing) pair. Stores the LLM explanation so we
+// don't re-call for the same pair unless preferences change.
+
+model CompatibilityScore {
+  id          String      @id @default(cuid())
+  tenantId    String      @map("tenant_id")
+  listingId   String      @map("listing_id")
+  score       Int         // 0–100 compatibility percentage
+  explanation String      // LLM-generated reasoning
+  computedVia ComputedVia @map("computed_via")
+  computedAt  DateTime    @default(now()) @map("computed_at")
+
+  // ── Relations ──
+  // CASCADE on both: if tenant or listing is removed, cached scores are stale.
+  tenant  User    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, listingId])
+  @@index([tenantId])
+  @@index([listingId])
+  @@index([score])
+  @@map("compatibility_scores")
+}
+
+// ─── InterestRequest ─────────────────────────────────────────────────────────
+// A tenant expresses interest in a listing. The owner can accept or decline.
+// An accepted InterestRequest spawns a Conversation for real-time chat.
+//
+// Design decision: InterestRequest is the "handshake" between tenant and owner.
+// Chat lives in a separate Conversation entity linked to the InterestRequest,
+// so we can model group conversations or re-use the chat infra later.
+
+model InterestRequest {
+  id         String         @id @default(cuid())
+  tenantId   String         @map("tenant_id")
+  listingId  String         @map("listing_id")
+  status     InterestStatus @default(PENDING)
+  message    String?        // optional intro message from tenant
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  resolvedAt DateTime?      @map("resolved_at")
+
+  // ── Relations ──
+  // CASCADE on listing: if listing is deleted, pending interest requests go too.
+  // CASCADE on tenant: if tenant is removed, their requests are cleaned up.
+  tenant       User          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  listing      Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  conversation Conversation?
+
+  @@unique([tenantId, listingId]) // one interest per tenant per listing
+  @@index([tenantId])
+  @@index([listingId])
+  @@index([status])
+  @@map("interest_requests")
+}
+
+// ─── Conversation ────────────────────────────────────────────────────────────
+// A chat thread tied to an InterestRequest. Created when the owner accepts.
+// Modeled separately from InterestRequest so chat can be extended later
+// (e.g. group chats, support threads) without coupling to the interest flow.
+
+model Conversation {
+  id                String   @id @default(cuid())
+  interestRequestId String   @unique @map("interest_request_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // ── Relations ──
+  // CASCADE: if the interest request is deleted, the conversation goes too.
+  interestRequest InterestRequest @relation(fields: [interestRequestId], references: [id], onDelete: Cascade)
+  messages        ChatMessage[]
+
+  @@map("conversations")
+}
+
+// ─── ChatMessage ─────────────────────────────────────────────────────────────
+// Individual messages within a Conversation. Supports read receipts via readAt.
+
+model ChatMessage {
+  id             String    @id @default(cuid())
+  conversationId String    @map("conversation_id")
+  senderId       String    @map("sender_id")
+  content        String
+  readAt         DateTime? @map("read_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  // ── Relations ──
+  // CASCADE on conversation: deleting a conversation deletes all messages.
+  // RESTRICT on sender: cannot delete a user who has sent messages (must handle in app logic).
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+// ─── Notification ────────────────────────────────────────────────────────────
+// In-app notification log. Persists even after read, for notification history.
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  metadata  Json?            // flexible payload: { listingId, interestRequestId, ... }
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  // ── Relations ──
+  // CASCADE: if the user is deleted, their notifications go too.
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([type])
+  @@index([createdAt])
+  @@map("notifications")
+}

@@ -1,0 +1,19 @@
+{
+  "name": "rent-flatmate-finder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rent & Flatmate Finder — AI-powered room listing and flatmate matching platform",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "lint:frontend": "cd frontend && npm run lint",
+    "lint:backend": "cd backend && npm run lint",
+    "lint": "npm run lint:frontend && npm run lint:backend",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\""
+  },
+  "keywords": ["rent", "flatmate", "finder", "ai", "matching"],
+  "license": "MIT"
+}

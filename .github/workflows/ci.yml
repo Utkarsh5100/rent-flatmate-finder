@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-test:
+    name: Backend CI
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: rent_flatmate_finder_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Lint check
+        run: npm run lint
+        working-directory: backend
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/rent_flatmate_finder_test
+
+      - name: Push DB Schema
+        run: npx prisma db push --skip-generate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/rent_flatmate_finder_test
+
+      - name: Run Tests
+        run: npm run test
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/rent_flatmate_finder_test
+          JWT_SECRET: super-secret-jwt-key-for-testing-purposes-only
+          NODE_ENV: test
+
+  frontend-build:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Lint check
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Build Next.js app
+        run: npm run build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:5000/api
