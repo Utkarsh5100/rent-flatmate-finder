@@ -6,7 +6,7 @@ services:
     branch: main
     rootDir: backend
     plan: free
-    buildCommand: npm ci && npx prisma generate && npm run build
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeployTrigger: commit
@@ -46,7 +46,7 @@ services:
     branch: main
     rootDir: frontend
     plan: free
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start -- -H 0.0.0.0 -p $PORT
     autoDeployTrigger: commit
     envVars:
