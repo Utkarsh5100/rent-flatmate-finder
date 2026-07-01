@@ -15,7 +15,7 @@ export function getIO(): Server {
 
 export function initSocketIO(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
-    cors: { origin: process.env['CORS_ORIGIN'] ?? 'http://localhost:3000', credentials: true },
+    cors: { origin: process.env['FRONTEND_URL'] ?? process.env['CORS_ORIGIN'] ?? 'http://localhost:3000', credentials: true },
     pingTimeout: 60000,
   });
 
