@@ -1,7 +1,11 @@
 import { io, Socket } from 'socket.io-client';
 import { getAccessToken } from './api';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
+const SOCKET_URL = (process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, ''))?.replace(/\/$/, '');
+
+if (!SOCKET_URL) {
+  throw new Error('NEXT_PUBLIC_SOCKET_URL is required');
+}
 
 let socket: Socket | null = null;
 

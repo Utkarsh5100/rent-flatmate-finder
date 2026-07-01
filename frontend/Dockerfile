@@ -4,7 +4,6 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-ENV NEXT_PUBLIC_API_URL=http://localhost:5000/api
 RUN npm run build
 
 # ── Production Stage ─────────────────────────────────────────────────────────

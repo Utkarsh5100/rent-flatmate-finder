@@ -1,4 +1,9 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const rawApiUrl = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_SOCKET_URL;
+const API_URL = rawApiUrl ? `${rawApiUrl.replace(/\/$/, '').replace(/\/api$/, '')}/api` : undefined;
+
+if (!rawApiUrl) {
+  throw new Error('NEXT_PUBLIC_API_URL is required');
+}
 
 let accessToken: string | null = null;
 
