@@ -183,7 +183,7 @@ rent-flatmate-finder/
 ### Step 1️⃣ Clone the Repository
 
 ```bash
-git clone https://github.com/anumodit740/rent-flatmate-finder.git
+git clone https://github.com/Utkarsh5100/rent-flatmate-finder.git
 cd rent-flatmate-finder
 ```
 
