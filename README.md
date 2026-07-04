@@ -461,7 +461,7 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 
 ## 💬 Support
 
-Need help? Open an [Issue](https://github.com/anumodit740/rent-flatmate-finder/issues) or start a [Discussion](https://github.com/anumodit740/rent-flatmate-finder/discussions).
+Need help? Open an [Issue](https://github.com/Utkarsh5100/rent-flatmate-finder/issues) or start a [Discussion](https://github.com/Utkarsh5100/rent-flatmate-finder/discussions).
 
 ---
 
